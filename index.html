@@ -1,0 +1,144 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Ultimate 3D Model Converter</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+</head>
+<body class="bg-gradient-to-tr from-slate-950 via-slate-900 to-cyan-950 text-slate-200 min-h-screen flex flex-col items-center justify-center p-4">
+
+    <div class="bg-slate-900/80 backdrop-blur-md p-8 rounded-2xl shadow-2xl max-w-lg w-full border border-cyan-500/10">
+        <div class="text-center mb-8">
+            <span class="text-xs font-bold uppercase tracking-widest text-cyan-400 bg-cyan-400/10 px-3 py-1 rounded-full font-mono font-semibold">Mesh Lab</span>
+            <h1 class="text-3xl font-black tracking-tight mt-3 text-white">3D-Modell-Konverter</h1>
+            <p class="text-sm text-slate-400 mt-2">Konvertiere deine 3D-Netze und CAD-Designs unkompliziert zwischen STL, OBJ, PLY und OFF.</p>
+        </div>
+
+        <form id="modelForm" class="space-y-6">
+            <div class="group relative border-2 border-dashed border-slate-700 hover:border-cyan-500 rounded-xl p-8 transition-all text-center bg-slate-950/40">
+                <input type="file" id="fileInput" accept=".stl,.obj,.ply,.off" required class="absolute inset-0 w-full h-full opacity-0 cursor-pointer">
+                <div id="promptText" class="space-y-2">
+                    <div class="text-4xl">📐</div>
+                    <p class="text-sm font-medium text-slate-300">3D-Datei auswählen oder hierher ziehen</p>
+                    <p class="text-xs text-slate-500">Unterstützt STL, OBJ, PLY und OFF</p>
+                </div>
+                <div id="fileDisplay" class="hidden text-cyan-400 font-semibold text-sm break-all"></div>
+            </div>
+
+            <div id="dropdownContainer" class="hidden space-y-2">
+                <label class="block text-xs font-bold uppercase tracking-wider text-slate-400">Zielformat wählen</label>
+                <select id="targetFormat" required class="block w-full border border-slate-700 rounded-xl p-3 bg-slate-950 text-white shadow-sm focus:border-cyan-500 focus:ring-1 focus:ring-cyan-500 outline-none transition-all">
+                    <option value="stl">STL (Standard für 3D-Drucker / Slicer)</option>
+                    <option value="obj">OBJ (Klassisches 3D-Objekt-Format mit Texturen)</option>
+                    <option value="ply">PLY (Polygon-Format, ideal für 3D-Scans)</option>
+                    <option value="off">OFF (Object File Format, einfach strukturiert)</option>
+                </select>
+            </div>
+
+            <button type="submit" id="submitBtn" disabled class="w-full bg-slate-800 text-slate-500 font-bold py-3 px-4 rounded-xl cursor-not-allowed transition-all duration-200">
+                Bitte lade zuerst ein 3D-Modell hoch
+            </button>
+        </form>
+
+        <div id="status" class="mt-6 p-4 rounded-xl text-center text-sm font-medium hidden"></div>
+    </div>
+
+    <script>
+        // Setze hier deine Live-URL von Render.com ein!
+        const BACKEND_URL = "https://model-3d-converter-backend.onrender.com/convert";
+
+        const fileInput = document.getElementById('fileInput');
+        const promptText = document.getElementById('promptText');
+        const fileDisplay = document.getElementById('fileDisplay');
+        const dropdownContainer = document.getElementById('dropdownContainer');
+        const targetFormat = document.getElementById('targetFormat');
+        const submitBtn = document.getElementById('submitBtn');
+        const status = document.getElementById('status');
+
+        fileInput.addEventListener('change', (e) => {
+            const file = e.target.files[0];
+            if (!file) return;
+
+            const ext = file.name.split('.').pop().toLowerCase();
+
+            promptText.classList.add('hidden');
+            fileDisplay.classList.remove('hidden');
+            fileDisplay.innerText = `Datei: ${file.name} (${(file.size/1024/1024).toFixed(2)} MB)`;
+
+            // Quellformat im Dropdown deaktivieren
+            Array.from(targetFormat.options).forEach(option => {
+                if (option.value === ext) {
+                    option.disabled = true;
+                } else {
+                    option.disabled = false;
+                }
+            });
+
+            // Standardauswahl korrigieren, falls deaktiviert
+            if (targetFormat.selectedOptions[0].disabled) {
+                for (let opt of targetFormat.options) {
+                    if (!opt.disabled) {
+                        targetFormat.value = opt.value;
+                        break;
+                    }
+                }
+            }
+
+            dropdownContainer.classList.remove('hidden');
+            submitBtn.disabled = false;
+            submitBtn.className = "w-full bg-cyan-600 hover:bg-cyan-700 text-slate-950 font-bold py-3 px-4 rounded-xl shadow-lg shadow-cyan-950/50 transition-all cursor-pointer duration-200";
+            submitBtn.innerText = "Modell jetzt konvertieren";
+            status.classList.add('hidden');
+        });
+
+        document.getElementById('modelForm').addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const file = fileInput.files[0];
+            if (!file) return;
+
+            status.className = "mt-6 p-4 rounded-xl text-center text-sm font-medium bg-blue-500/10 text-blue-400 border border-blue-500/20";
+            status.innerText = "3D-Geometrie wird neu berechnet... Bitte hab einen kurzen Moment Geduld.";
+            status.classList.remove('hidden');
+            submitBtn.disabled = true;
+            submitBtn.classList.add('opacity-50');
+
+            const formData = new FormData();
+            formData.append('file', file);
+            formData.append('target_format', targetFormat.value);
+
+            try {
+                const response = await fetch(BACKEND_URL, {
+                    method: 'POST',
+                    body: formData
+                });
+
+                if (!response.ok) {
+                    const err = await response.json();
+                    throw new Error(err.error || "Unerwarteter 3D-Berechnungsfehler.");
+                }
+
+                const blob = await response.blob();
+                const url = window.URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                
+                const baseName = file.name.substring(0, file.name.lastIndexOf('.'));
+                a.download = `${baseName}.${targetFormat.value}`;
+                document.body.appendChild(a);
+                a.click();
+                a.remove();
+
+                status.className = "mt-6 p-4 rounded-xl text-center text-sm font-medium bg-emerald-500/10 text-emerald-400 border border-emerald-500/20";
+                status.innerText = "Modell erfolgreich konvertiert und heruntergeladen!";
+            } catch (err) {
+                status.className = "mt-6 p-4 rounded-xl text-center text-sm font-medium bg-red-500/10 text-red-400 border border-red-500/20";
+                status.innerText = err.message;
+            } finally {
+                submitBtn.disabled = false;
+                submitBtn.classList.remove('opacity-50');
+            }
+        });
+    </script>
+</body>
+</html>
